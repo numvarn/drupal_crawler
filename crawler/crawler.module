@@ -1,0 +1,437 @@
+<?php
+define('TABOO', serialize(array(
+            "football.kapook.com",
+            "instagram.kapook.com",
+            "music.mthai.com",
+            "musicstation.kapook.com",
+            "signup-demo.kapook.com",
+            "travel.kapook.com",
+            "twitter.kapook.com",
+            "wedding.kapook.com",
+            "movie.mthai.com",
+            "travel.mthai.com",
+            "www.daradaily.com",
+            "www.facebook.com",
+            "www.gucci.com",
+            "www.hugoboss.com",
+            "www.jackspade.com",
+            "www.oakley.com",
+            "www.scopus.com",
+            "www.karger.com",
+            "www.youtube.com",
+            "1.bp.blogspot.com",
+            "2.bp.blogspot.com",
+            "4.bp.blogspot.com",
+            "accounts.google.com",
+            "www.exteen.com",
+            "ads.pantip.com",))
+    );
+
+/**
+ * Implements hook_menu().
+ */
+function crawler_menu() {
+  $items = array();
+
+  $items['crawler'] = array(
+    'title' => 'URL List',
+    'page callback' => 'crawler_page',
+    'page arguments' => array(),
+    'access arguments' => array('access content'),
+  );
+
+  $items['export-url'] = array(
+    'title' => 'Export URL List',
+    'page callback' => 'crawler_export_url',
+    'page arguments' => array(),
+    'access arguments' => array('create url_list content'),
+  );
+
+  $items['export/netloc/%crawler_termid'] = array(
+    'title' => 'Export URL by Network Location',
+    'page callback' => 'crawler_export_netloc',
+    'page arguments' => array(2),
+    'access arguments' => array('create url_list content'),
+  );
+
+  $items['export/netloc/%crawler_termid/del'] = array(
+    'title' => 'Delete URL by Network Location',
+    'page callback' => 'crawler_delete_netloc',
+    'page arguments' => array(2),
+    'access arguments' => array('create url_list content'),
+  );
+
+  $items['export/netloc/delete'] = array(
+    'title' => 'Delete URL by Select Network Location',
+    'page callback' => 'crawler_netloc_select',
+    'page arguments' => array(),
+    'access arguments' => array('create url_list content'),
+    'menu type' => 'MENU_CALLBACK'
+  );
+
+  return $items;
+}
+
+function crawler_termid_load($args) {
+    return $args;
+}
+
+function crawler_cron() {
+    crawler_import_url();
+    // crawler_export_url_all();
+    // crawler_delete_netloc_byname();
+    // crawler_del_url();
+    // crawler_clean_entity(52);
+}
+
+function crawler_page() {
+    $output = '';
+    return $output;
+}
+
+function crawler_delete_netloc_byname() {
+    _crawler_delete_netloc_byname();
+}
+
+function crawler_netloc_select() {
+    $output = '';
+    $form = drupal_get_form('crawler_netloc_select_form');
+    $output .= drupal_render($form);
+    return $output;
+}
+
+function crawler_netloc_select_form($form_state) {
+    $form = array();
+    $options = array();
+    $count = 1;
+    $result = db_select('taxonomy_term_data', 'term')
+                ->fields('term', array('tid', 'name'))
+                ->condition('vid', 2, '=')
+                ->orderBy('name', 'ASC')
+                ->execute();
+
+    while ($net = $result->fetchObject()) {
+        $options[$net->tid] = $count." : ".crawler_count_url($net->tid)." : ".$net->name;
+        $count++;
+    }
+
+    $form['netloc'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t("Network Location"),
+        '#options' => $options,
+        '#required' => TRUE,
+    );
+
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => 'เลือก'
+    );
+
+    return $form;
+}
+
+function crawler_netloc_select_form_submit($form, $form_state) {
+    $netloc = $form_state['values']['netloc'];
+    foreach ($netloc as $key => $tid) {
+        if ($tid != 0) {
+            $term = taxonomy_term_load($tid);
+            $name = $term->name;
+            $query = db_select('field_data_field_netloc', 'nt')
+                        ->fields('nt', array('entity_id'))
+                        ->condition('field_netloc_tid', $tid, '=')
+                        ->orderBy('entity_id', 'ASC')
+                        ->execute();
+            while ($entity_id = $query->fetchColumn()) {
+                node_delete($entity_id);
+            }
+            taxonomy_term_delete($tid);
+            drupal_set_message($term->name." Has Been Delete");
+        }
+    }
+    $form_state['redirect'] = "export/netloc/delete";
+}
+
+function _crawler_delete_netloc_byname() {
+    $list = unserialize(TABOO);
+
+    foreach ($list as $key => $name) {
+        $tid = 0;
+        $tid = custom_taxonomy_get_by_name($name, 2);
+        if ($tid != 0) {
+            $term = taxonomy_term_load($tid);
+            $query = db_select('field_data_field_netloc', 'nt')
+                        ->fields('nt', array('entity_id'))
+                        ->condition('field_netloc_tid', $tid, '=')
+                        ->orderBy('entity_id', 'ASC')
+                        ->execute();
+
+            while ($entity_id = $query->fetchColumn()) {
+                node_delete($entity_id);
+                print $name." : Entity ID : ".$entity_id." has been deleted\n";
+            }
+            taxonomy_term_delete($tid);
+        }
+        else {
+            print "error !! \n";
+        }
+    }
+}
+
+function crawler_delete_netloc($tid) {
+    $term = taxonomy_term_load($tid);
+    $name = $term->name;
+    $query = db_select('field_data_field_netloc', 'nt')
+                ->fields('nt', array('entity_id'))
+                ->condition('field_netloc_tid', $tid, '=')
+                ->orderBy('entity_id', 'ASC')
+                ->execute();
+
+    while ($entity_id = $query->fetchColumn()) {
+        node_delete($entity_id);
+    }
+
+    taxonomy_term_delete($tid);
+
+    drupal_set_message(t($name." has been deleted."), 'status', FALSE);
+    drupal_goto('network-location/term');
+}
+
+function crawler_export_netloc($tid) {
+    $term = taxonomy_term_load($tid);
+    $query = db_select('field_data_field_netloc', 'nt')
+                ->fields('nt', array('entity_id'))
+                ->condition('field_netloc_tid', $tid, '=')
+                ->orderBy('entity_id', 'ASC')
+                ->execute();
+
+    $filename = $term->name.".csv";
+    $filepath = '/Users/phisan/Desktop/'.$filename;
+    $file = fopen($filepath, "w");
+
+    while ($entity_id = $query->fetchColumn()) {
+        $line = array();
+        $node = node_load($entity_id);
+        $line[] = $node->field_url_id['und'][0]['value'];
+        $line[] = $node->field_url_path['und'][0]['value'];
+        $line[] = $node->field_url_desc['und'][0]['value'];
+        fputcsv($file, $line);
+    }
+
+    fclose($file);
+    drupal_set_message(t($filepath." has been created."), 'status', FALSE);
+    drupal_goto('network-location/term');
+}
+
+function crawler_count_url($tid) {
+    $result = db_select('field_data_field_netloc', 'nt')
+                ->fields('nt', array('entity_id'))
+                ->condition('field_netloc_tid', $tid, '=')
+                ->execute();
+    $num_of_result = $result->rowCount();
+    return $num_of_result;
+}
+
+function crawler_export_url() {
+    $output = '';
+    $form = drupal_get_form('crawler_export_form');
+    $output .= drupal_render($form);
+    return $output;
+}
+
+function crawler_export_form($form_state) {
+    $form = array();
+
+    $form['start_url_id'] = array(
+        '#type' => 'textfield',
+        '#title' => t("Start URL ID"),
+        '#description' => t("กรอกหมายเลขของ url เริ่มต้น"),
+        '#required' => TRUE,
+    );
+
+    $form['end_url_id'] = array(
+        '#type' => 'textfield',
+        '#title' => t("End URL ID"),
+        '#description' => t("กรอกหมายเลขของ url สุดท้าย"),
+        '#required' => TRUE,
+    );
+
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => 'เลือก'
+    );
+    return $form;
+}
+
+function crawler_export_url_all() {
+    $result = db_select('field_data_field_url_id', 'id')
+                ->fields('id', array('entity_id'))
+                ->orderBy('id.field_url_id_value', 'ASC')
+                ->execute();
+
+    $filename = "all_url.csv";
+    $filepath = '/Users/phisanshukkhi/Desktop/'.$filename;
+
+    $file = fopen($filepath, "w");
+
+    while ($eid = $result->fetchColumn()) {
+        $line = array();
+        $node = node_load($eid);
+        $line[] = $node->field_url_id['und'][0]['value'];
+        $line[] = $node->field_url_path['und'][0]['value'];
+        fputcsv($file, $line);
+        print "url ID : ".$node->field_url_id['und'][0]['value']." is exported\n";
+    }
+    fclose($file);
+}
+
+function crawler_export_form_submit($form, $form_state) {
+    $start_id = trim($form_state['values']['start_url_id']);
+    $end_id = trim($form_state['values']['end_url_id']);
+
+    $result = db_select('field_data_field_url_id', 'id')
+                ->fields('id', array('entity_id'))
+                ->condition('field_url_id_value', $start_id, '>=')
+                ->condition('field_url_id_value', $end_id, '<=')
+                ->execute();
+
+    $filename = $start_id."_".$end_id.".csv";
+    $filepath = '/Users/phisanshukkhi/Desktop/'.$filename;
+
+    $file = fopen($filepath, "w");
+
+    while ($eid = $result->fetchColumn()) {
+        $line = array();
+        $node = node_load($eid);
+        $line[] = $node->field_url_id['und'][0]['value'];
+        $line[] = $node->field_url_path['und'][0]['value'];
+        fputcsv($file, $line);
+    }
+    fclose($file);
+    drupal_set_message(t('File '.$filepath.' has been created.'), 'status', FALSE);
+}
+
+function crawler_import_url() {
+    $csv_file = "/Users/phisan/ResearchCode/webcrawler/TextMining/spiders/items.csv";
+    $file = fopen($csv_file, "r");
+    $ln_count = 0;
+    $hit = 0;
+
+    $taboo_list = unserialize(TABOO);
+
+    while(! feof($file)) {
+        $line = fgetcsv($file);
+        if ($ln_count > 0 && $line[1] != '') {
+            $not_taboo = true;
+            if (in_array(trim($line[0]), $taboo_list) && $line[0] != "") {
+                $not_taboo = false;
+            }
+
+            if (crawler_check_exist($line[1]) && crawler_check_valid_url($line[1]) && $not_taboo) {
+                crawler_import_exec($line);
+                $hit++;
+            }
+        }
+        $ln_count++;
+    }
+    fclose($file);
+    print "Hit : ".$hit;
+}
+
+function crawler_import_exec($line) {
+    global $user;
+    $node = new stdClass();
+    $node->type  = 'url_list';
+    $node->title = "url";
+
+    $node->language   = LANGUAGE_NONE;
+    $node->uid        = $user->uid;
+    $node->created    = time();
+    $node->changed    = $node->created;
+    $node->status     = 1;
+    $node->promote    = 0;
+    $node->sticky     = 0;
+    $node->format     = 0;
+    $node->revision   = 1;
+    $node->log        = t('Node saved: '.$node->title);
+
+    // Get Last ID
+    $max = 0;
+    $query = db_select('field_data_field_url_id', 'id')
+                ->fields('id', array('field_url_id_value'))
+                ->orderBy('field_url_id_value', 'DESC')
+                ->range(0,1)
+                ->execute();
+
+    $max = $query->fetchColumn();
+    if ($max) {
+        $max++;
+    }else {
+        $max = 1;
+    }
+
+    print "\033[01;31m".$line[1]." -- Added"."\033[0m\n";
+
+    // remove spacial charecter
+    $line[2] = preg_replace("/[^A-Za-z0-9]/", "", trim(strip_tags($line[2])));
+
+    $node->field_url_id['und'][0]['value'] = $max;
+    $node->field_netloc['und'][0]['tid'] = custom_taxonomy_get_by_name(trim($line[0]), 2);
+    $node->field_url_path['und'][0]['value'] = trim($line[1]);
+    $node->field_url_desc['und'][0]['value'] = $line[2];
+
+    node_save($node);
+}
+
+function crawler_check_valid_url($url_path) {
+    $valid = true;
+    if (filter_var($url_path, FILTER_VALIDATE_URL) === FALSE) {
+        $valid = true;
+    }
+    return $valid;
+}
+
+function crawler_check_exist($url_path) {
+    $entity_id = 0;
+    $query = db_select('field_data_field_url_path', 'p')
+                ->fields('p', array('entity_id'))
+                ->condition('field_url_path_value', $url_path, '=')
+                ->execute();
+    $entity_id = $query->fetchColumn();
+
+    if ($entity_id != 0) {
+        return false;
+    }else {
+        return true;
+    }
+}
+
+function crawler_clean_entity($tid) {
+    $query = db_select('field_data_field_netloc', 'nt')
+                ->fields('nt', array('entity_id'))
+                ->condition('field_netloc_tid', $tid, '=')
+                ->execute();
+
+    while ($entity_id = $query->fetchColumn()) {
+        $node = node_load($entity_id);
+        $url = $node->field_url_path['und'][0]['value'];
+        $ext = pathinfo($url, PATHINFO_EXTENSION);
+        if ($ext=="jpg" or $ext=="jpeg" or $ext=="JPG" or $ext=="JPEG" or $ext=="png" or $ext=="pdf") {
+            node_delete($entity_id);
+            print $entity_id." : ".$url." deleted "."\n";
+        }
+        unset($node);
+    }
+}
+
+function crawler_del_url() {
+    $query = db_select('node', 'n')
+                ->fields('n', array('nid'))
+                ->condition('n.type', 'url_list', '=')
+                ->execute();
+    while ($nid = $query->fetchColumn()) {
+        print "delete EID : ".$nid."\n";
+        node_delete($nid);
+    }
+}
+
+
